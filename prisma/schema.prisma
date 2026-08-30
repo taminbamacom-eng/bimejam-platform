@@ -1,0 +1,555 @@
+// Prisma schema for Bimeh Jam AI Insurance Sales Platform Backend
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  name          String
+  role          String         @default("OPERATOR") // ADMIN, OPERATOR, AGENT
+  avatar        String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+}
+
+model Customer {
+  id                       String          @id @default(uuid())
+  goftinoUserId            String?         @unique
+  goftinoChatId            String?
+  name                     String
+  phone                    String?
+  email                    String?
+  city                     String?
+  ip                       String?
+  source                   String?         @default("گفتینو")
+  leadScore                Int?            @default(50)
+  leadStatus               String?         @default("Cold")
+  assignedOperator         String?         
+  lastActivity             DateTime?
+  avatar                   String?
+  tags                     String          @default("") // Comma separated or JSON string
+  interestedInsuranceTypes String          @default("[]") // JSON string e.g. ["بیمه مسئولیت آسانسور"]
+  websiteActivity          String          @default("[]") // JSON string e.g. [{"url": "/product/1", "timestamp": "..."}]
+  internalNotesText        String?         @default("")
+  issuedPolicies           String          @default("[]") // JSON string of issued policies
+  metadata                 String          @default("{}") // JSON metadata
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  conversations            Conversation[]
+  leads                    Lead[]
+  tasks                    Task[]
+  notifications            Notification[]
+  timelineEvents           TimelineEvent[]
+  customerNotes            CustomerNote[]
+}
+
+model Conversation {
+  id                     String             @id @default(uuid())
+  goftinoChatId          String?            @unique
+  customerId             String
+  customer               Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUserId         String?
+  assignedUser           User?              @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedOperator       String?
+  status                 String             @default("NEW") // NEW, AI_CONVERSATION, COLLECTING_QUOTATION_INFORMATION, READY_FOR_PRICE_REQUEST, WAITING_FOR_EXPERT, PRICE_SENT_TO_CUSTOMER, NEGOTIATION, PURCHASE_REQUEST, POLICY_ISSUED, CLOSED
+  aiStatus               String             @default("ACTIVE") // ACTIVE, PAUSED, HANDED_OFF, COMPLETED, DISABLED
+  humanStatus            String             @default("UNASSIGNED") // UNASSIGNED, ASSIGNED, IN_PROGRESS, DONE
+  currentProductId       String?
+  currentProductName     String?
+  collectedData          String             @default("{}") // JSON string storing extracted key-values (vehicle, building, driver age, no claim discount, construction year, etc.)
+  remainingQuestions     String             @default("[]") // JSON string of remaining required questions
+  aiSummary              String?            // Internal summary for operators (Customer intent, important collected facts, current progress, pending action)
+  unreadCount            Int                @default(0)
+  lastMessage            String?
+  lastMessageAt          DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  messages               Message[]
+  leads                  Lead[]
+  tasks                  Task[]
+  notifications          Notification[]
+  timelineEvents         TimelineEvent[]
+  conversationNotes      ConversationNote[]
+}
+
+model TimelineEvent {
+  id             String        @id @default(uuid())
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  type           String        // CONVERSATION_CREATED, CUSTOMER_REPLIED, AI_ASKED_QUESTION, COLLECTED_DATA_UPDATED, CONVERSATION_ASSIGNED, PRICE_REQUEST_COMPLETED, OPERATOR_JOINED, PRICE_SENT, PURCHASE_REQUESTED, POLICY_ISSUED, CONVERSATION_CLOSED
+  title          String        // Human-readable title
+  description    String?       // Detailed description
+  actor          String        @default("SYSTEM") // SYSTEM, CUSTOMER, AI, OPERATOR
+  metadata       String?       @default("{}") // Extra JSON details
+  createdAt      DateTime      @default(now())
+}
+
+model CustomerNote {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  author     String   @default("اپراتور")
+  content    String
+  createdAt  DateTime @default(now())
+}
+
+model ConversationNote {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         String       @default("اپراتور")
+  content        String
+  createdAt      DateTime     @default(now())
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String?      // customer, operator, system, AI
+  senderType     String       @default("CUSTOMER") // CUSTOMER, OPERATOR, AI, SYSTEM
+  senderId       String?
+  content        String
+  messageId      String?      @unique // Goftino message_id for duplicate protection
+  channel        String?      @default("goftino")
+  messageType    String       @default("TEXT") // TEXT, FILE, FORM, BUTTON
+  isSeen         Boolean      @default(false)
+  isTestMode     Boolean      @default(false)
+  metadata       String?      @default("{}")
+  replyToId      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  event     String
+  payload   String
+  status    String   @default("RECEIVED")
+  createdAt DateTime @default(now())
+}
+
+model AiLog {
+  id             String   @id @default(uuid())
+  conversationId String?
+  customerId     String?
+  messageId      String?
+  step           String   // Webhook Received, Customer Loaded, Conversation Loaded, Prompt Built, OpenAI Request, OpenAI Response, Goftino Send, Completed, Error
+  status         String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  details        String?  // JSON string or text details
+  durationMs     Int?     @default(0)
+  createdAt      DateTime @default(now())
+}
+
+model BrainLog {
+  id               String   @id @default(uuid())
+  conversationId   String?
+  customerId       String?
+  messageId        String?
+  intent           String   // e.g. Insurance Quotation, Policy Comparison, Installment Payment, Claim Support, Policy Renewal, General Question, Complaint, Human Operator Request
+  stage            String   // e.g. New Lead, Exploring, Comparing, Ready to Buy, Existing Customer, Returning Customer
+  missingInfo      String?  // e.g. "Car Model, Year, Previous Claims" or "None"
+  loadedKnowledge  String?  // Summary/JSON of retrieved knowledge
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  rawPrompt        String?  // Final system prompt snippet
+  generatedReply   String?  // AI generated output
+  validationResult String   @default("PASSED") // PASSED, REJECTED, REGENERATED
+  validationReason String?
+  retryCount       Int      @default(0)
+  createdAt        DateTime @default(now())
+}
+
+model AiPrompt {
+  id        String   @id @default(uuid())
+  name      String
+  content   String
+  version   String   @default("1.0")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InsuranceProduct {
+  id                String              @id @default(uuid())
+  name              String
+  slug              String              @unique
+  category          String              // e.g. "RESPONSIBILITY", "VEHICLE", "PROPERTY", "HEALTH", "LIFE"
+  description       String
+  status            String              @default("ACTIVE") // ACTIVE, DRAFT, ARCHIVED
+  introduction      String?
+  coverage          String?
+  exclusions        String?
+  benefits          String?
+  requiredDocuments String?
+  purchaseConditions String?
+  renewalRules      String?
+  claimProcess      String?
+  commonQuestions   String?
+  commonObjections  String?
+
+  categoryId        String?
+  subCategoryId     String?
+
+  categoryRef       InsuranceCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subCategoryRef    InsuranceSubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
+
+  // AI Product Specific Knowledge
+  aiKnowledgeArticle String?
+  aiRules            String?
+
+  // AI Product Specific Knowledge
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  quotationQuestions QuotationQuestion[]
+  quotationWorkflows QuotationWorkflow[]
+  quotationSessions  QuotationSession[]
+  knowledgeItems    KnowledgeItem[]
+  urlMaps           ProductUrlMap[]
+}
+
+model ProductUrlMap {
+  id               String           @id @default(uuid())
+  url              String           @unique
+  pageTitle        String?
+  productId        String
+  product          InsuranceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category         String           // e.g. "خودرو", "مسئولیت", "اموال", "درمان", "اشخاص"
+  productType      String           @default("quotation") // quotation, content, sales
+  quotationEnabled Boolean          @default(true)
+  aiEnabled        Boolean          @default(true)
+  relatedKnowledge String?          @default("[]") // JSON string e.g. ["coverage", "price", "claims"]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model QuotationWorkflow {
+  id                 String            @id @default(uuid())
+  insuranceProductId String
+  insuranceProduct   InsuranceProduct  @relation(fields: [insuranceProductId], references: [id], onDelete: Cascade)
+  name               String
+  status             String            @default("ACTIVE") // ACTIVE, DRAFT, INACTIVE
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  questions          QuotationQuestion[]
+  sessions           QuotationSession[]
+}
+
+model QuotationQuestion {
+  id             String            @id @default(uuid())
+  workflowId     String?
+  workflow       QuotationWorkflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        InsuranceProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  title          String            // questionText
+  aiQuestion     String?           // AI Question prompt
+  fieldName      String
+  type           String            @default("number") // text, number, select, radio, checkbox, boolean, date
+  options        String?           @default("[]") // JSON string of choices
+  required       Boolean           @default(true)
+  order          Int               @default(0)
+  validationRule String?
+  placeholder    String?
+  helpText       String?
+  minVal         Float?
+  maxVal         Float?
+  minLength      Int?
+  maxLength      Int?
+  condition      String?           @default("{}") // JSON string e.g. {"dependsOn": "has_trainer", "value": true}
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  answers        QuotationAnswer[]
+}
+
+model QuotationSession {
+  id            String            @id @default(uuid())
+  customerId    String?
+  conversationId String?
+  productId     String
+  product       InsuranceProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  workflowId    String?
+  workflow      QuotationWorkflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  status        String            @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, ABANDONED
+  currentStep   Int               @default(1)
+  collectedData String?           @default("{}") // JSON string of all accumulated key-values
+  createdAt     DateTime          @default(now())
+  completedAt   DateTime?
+  updatedAt     DateTime          @updatedAt
+  answers       QuotationAnswer[]
+}
+
+model QuotationAnswer {
+  id         String            @id @default(uuid())
+  sessionId  String
+  session    QuotationSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId String?
+  question   QuotationQuestion? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  fieldName  String
+  value      String
+  source     String            @default("customer") // customer, ai_extracted, operator
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model KnowledgeArticle {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  category  String   @default("GENERAL") // e.g. "خودرو", "درمان", "اموال", "مسئولیت", "عمومی"
+  tags      String   @default("")
+  status    String   @default("PUBLISHED") // DRAFT, PUBLISHED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerObjection {
+  id                  String   @id @default(uuid())
+  objection           String
+  recommendedResponse String
+  responseGoal        String
+  category            String   @default("GENERAL") // e.g. "قیمت", "اعتماد", "اقساط", "صدور"
+  status              String   @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AiRule {
+  id               String   @id @default(uuid())
+  title            String
+  category         String   @default("CUSTOM")
+  directive        String
+  enforcementLevel String   @default("STRICT") // STRICT, WARNING, OPTIONAL
+  status           String   @default("ACTIVE") // ACTIVE, INACTIVE
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model KnowledgeItem {
+  id          String            @id @default(uuid())
+  productId   String?
+  product     InsuranceProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  title       String
+  content     String
+  category    String            @default("GENERAL") // COVERAGE, EXCLUSION, CLAIM, OBJECTION, GENERAL
+  keywords    String            @default("")
+  status      String            @default("APPROVED") // APPROVED, PENDING, REJECTED
+  usageCount  Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model FAQ {
+  id            String   @id @default(uuid())
+  question      String
+  answer        String
+  insuranceType String   @default("عمومی")
+  keywords      String   @default("")
+  priority      Int      @default(1)
+  status        String   @default("APPROVED") // APPROVED, DRAFT
+  usageCount    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ResponseTemplate {
+  id        String   @id @default(uuid())
+  title     String
+  category  String   // Greeting, Price Inquiry, Quotation Request, Document Request, Follow-up, Objection Handling, Human Transfer
+  scenario  String
+  content   String
+  variables String?  @default("[]") // JSON string of variables e.g. ["customer_name", "price"]
+  status    String   @default("APPROVED") // APPROVED, DRAFT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KnowledgeUsage {
+  id              String   @id @default(uuid())
+  messageId       String?
+  conversationId  String?
+  itemType        String   // PRODUCT, FAQ, TEMPLATE, PROMPT
+  itemId          String
+  confidenceScore Float    @default(0.95)
+  source          String   @default("BimehJam_KnowledgeBase")
+  createdAt       DateTime @default(now())
+}
+
+model KnowledgeGap {
+  id              String   @id @default(uuid())
+  question        String
+  frequency       Int      @default(1)
+  impact          String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+  suggestedAction String?
+  status          String   @default("OPEN") // OPEN, RESOLVED, IGNORED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Lead {
+  id             String        @id @default(uuid())
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  insuranceType  String        // THIRD_PARTY, BODY, HEALTH, FIRE, LIFE
+  score          Int           @default(50) // 0 - 100
+  status         String        @default("NEW") // NEW, IN_PROGRESS, QUALIFIED, WON, LOST
+  intent         String?
+  sentiment      String?
+  carModel       String?
+  urgency        String?
+  estimatedValue Float?
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  tasks          Task[]
+  notifications  Notification[]
+}
+
+model Task {
+  id             String        @id @default(uuid())
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  assignedUser   String?       @default("کارشناس فروش")
+  title          String
+  description    String?
+  type           String        @default("Call Customer") // Call Customer, Send Message, Prepare Quotation, Collect Documents, Review Request, Follow Up Quote, Renewal Reminder, Complaint Follow Up, Other
+  priority       String        @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status         String        @default("New") // New, In Progress, Completed, Cancelled, Expired
+  source         String        @default("AI") // AI, Operator, Automation Rule, Admin
+  dueDate        DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Notification {
+  id             String        @id @default(uuid())
+  type           String        @default("Follow Up Required") // Hot Lead, New Customer, New Conversation, Quotation Ready, Follow Up Required, Task Deadline, AI Error, Knowledge Gap
+  title          String
+  description    String?
+  priority       String        @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  read           Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+}
+
+model AutomationRule {
+  id            String                @id @default(uuid())
+  name          String
+  event         String                // LEAD_HOT, QUOTATION_SENT, CONVERSATION_NEW, CUSTOMER_RETURNED, CUSTOMER_INACTIVE
+  condition     String?               @default("{}") // JSON rule condition
+  action        String                // CREATE_TASK, SEND_NOTIFICATION, ASSIGN_EXPERT, CHANGE_LEAD_STATUS, ADD_TAG
+  actionPayload String?               @default("{}") // JSON action payload
+  active        Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  executions    AutomationExecution[]
+}
+
+model AutomationExecution {
+  id          String         @id @default(uuid())
+  ruleId      String
+  rule        AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  eventData   String?        @default("{}")
+  status      String         @default("SUCCESS") // SUCCESS, FAILED
+  details     String?
+  executedAt  DateTime       @default(now())
+}
+
+
+model InsuranceCategory {
+  id            String                 @id @default(uuid())
+  name          String
+  slug          String                 @unique
+  description   String?
+  status        String                 @default("ACTIVE")
+  sortOrder     Int                    @default(0)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  subCategories InsuranceSubCategory[]
+  products      InsuranceProduct[]
+}
+
+model InsuranceSubCategory {
+  id          String            @id @default(uuid())
+  categoryId  String
+  name        String
+  slug        String            @unique
+  description String?
+  status      String            @default("ACTIVE")
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  category InsuranceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  products InsuranceProduct[]
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+
+
+// AI Response Governance
+// Controls which insurance categories AI can answer or handoff
+model AiResponsePolicy {
+  id String @id @default(uuid())
+
+  category String @unique
+  // Example:
+  // VEHICLE
+  // RESPONSIBILITY
+  // FIRE
+  // ENGINEERING
+  // CLAIM
+  // SUPPORT
+
+  mode String @default("AI_ALLOWED")
+  // AI_ALLOWED
+  // AI_ASSISTED
+  // HUMAN_ONLY
+
+  priority String @default("NORMAL")
+  // NORMAL
+  // HIGH
+  // URGENT
+
+  aiInstruction String?
+  fallbackMessage String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

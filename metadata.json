@@ -1,0 +1,6 @@
+{
+  "name": "بیمه جم | سامانه هوشمند فروش بیمه و پلتفرم وِبهوک گفتینو",
+  "description": "وب‌اپلیکیشن فروش و استعلام بیمه جم مجهز به هوش مصنوعی پاسخگویی آنلاین و تحلیل رفتار مشتریان از طریق وِبهوک گفتینو (Goftino)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

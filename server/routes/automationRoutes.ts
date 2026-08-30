@@ -1,0 +1,43 @@
+import { Router } from 'express';
+import {
+  getTasks,
+  createTask,
+  updateTask,
+  getSmartSuggestions,
+} from '../controllers/taskController';
+import {
+  getNotifications,
+  markAsRead,
+  markAllAsRead,
+} from '../controllers/notificationController';
+import {
+  getRules,
+  createRule,
+  updateRule,
+  deleteRule,
+  triggerEvent,
+  getExecutions,
+} from '../controllers/automationController';
+
+const router = Router();
+
+// Tasks API
+router.get('/tasks', getTasks);
+router.post('/tasks', createTask);
+router.patch('/tasks/:id', updateTask);
+router.get('/tasks/smart-suggestions', getSmartSuggestions);
+
+// Notifications API
+router.get('/notifications', getNotifications);
+router.patch('/notifications/read-all', markAllAsRead);
+router.patch('/notifications/:id/read', markAsRead);
+
+// Automation Rules API
+router.get('/automation-rules', getRules);
+router.post('/automation-rules', createRule);
+router.put('/automation-rules/:id', updateRule);
+router.delete('/automation-rules/:id', deleteRule);
+router.post('/automation-rules/trigger', triggerEvent);
+router.get('/automation-rules/executions', getExecutions);
+
+export default router;

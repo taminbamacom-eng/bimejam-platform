@@ -1,0 +1,215 @@
+import { Request, Response } from 'express';
+import {
+  getAiMode,
+  setAiMode,
+  getAllSystemSettings,
+  updateSystemSetting,
+  AiMode,
+  getAiConfig,
+  saveAiConfig,
+  testAiConnectionService,
+} from '../services/settingService';
+
+// GET /api/ai/mode
+export async function getAiModeController(req: Request, res: Response) {
+  try {
+    const mode = await getAiMode();
+    return res.json({
+      success: true,
+      data: {
+        mode,
+        label: mode === 'ACTIVE' ? 'فعال' : mode === 'TEST_MODE' ? 'تست مود' : 'خاموش',
+        description:
+          mode === 'ACTIVE'
+            ? 'هوش مصنوعی پاسخ تولید می‌کند و مستقیماً به گفتینو ارسال می‌شود.'
+            : mode === 'TEST_MODE'
+            ? 'هوش مصنوعی روی پیام‌های واقعی مشتری پاسخ تولید می‌کند، در دیتابیس و پنل ذخیره می‌شود ولی به گفتینو یا مشتری ارسال نمی‌گردد.'
+            : 'پایپ‌لاین هوش مصنوعی کاملاً متوقف است.',
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// POST /api/ai/mode
+export async function setAiModeController(req: Request, res: Response) {
+  try {
+    const { mode } = req.body;
+    if (!mode || !['OFF', 'TEST_MODE', 'ACTIVE'].includes(mode)) {
+      return res.status(400).json({
+        success: false,
+        error: 'وضعیت نامعتبر است. گزینه‌های مجاز: OFF (خاموش), TEST_MODE (تست مود), ACTIVE (فعال)',
+      });
+    }
+
+    const updatedMode = await setAiMode(mode as AiMode);
+    return res.json({
+      success: true,
+      data: {
+        mode: updatedMode,
+        label: updatedMode === 'ACTIVE' ? 'فعال' : updatedMode === 'TEST_MODE' ? 'تست مود' : 'خاموش',
+      },
+      message: `وضعیت هوش مصنوعی با موفقیت به "${updatedMode === 'ACTIVE' ? 'فعال' : updatedMode === 'TEST_MODE' ? 'تست مود' : 'خاموش'}" تغییر یافت.`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// GET /api/settings/ai-config or GET /api/ai/config
+export async function getAiConfigController(req: Request, res: Response) {
+  try {
+    const config = await getAiConfig();
+    return res.json({
+      success: true,
+      data: config,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// POST or PUT /api/settings/ai-config or /api/ai/config
+export async function updateAiConfigController(req: Request, res: Response) {
+  try {
+    const body = req.body || {};
+    const updated = await saveAiConfig(body);
+    return res.json({
+      success: true,
+      data: updated,
+      message: 'تنظیمات مدل هوش مصنوعی با موفقیت ذخیره شد.',
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// POST /api/settings/ai-test or /api/ai/test-connection
+export async function testAiConnectionController(req: Request, res: Response) {
+  try {
+    const result = await testAiConnectionService(req.body);
+    return res.json({
+      success: true,
+      data: result,
+      message: `تست اتصال با مدل ${result.modelUsed} در مدت زمان ${result.latencyMs} میلی‌ثانیه با موفقیت انجام شد.`,
+    });
+  } catch (error: any) {
+    console.error('Error during AI connection test:', error);
+    return res.status(400).json({
+      success: false,
+      error: error.message || 'خطا در برقراری ارتباط با سرویس هوش مصنوعی',
+    });
+  }
+}
+
+// GET /api/settings
+export async function getSettingsController(req: Request, res: Response) {
+  try {
+    const settings = await getAllSystemSettings();
+    return res.json({
+      success: true,
+      data: settings,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// POST /api/settings
+export async function updateSettingController(req: Request, res: Response) {
+  try {
+    const { key, value, description } = req.body;
+    if (!key || typeof value === 'undefined') {
+      return res.status(400).json({ success: false, error: 'key و value الزامی هستند.' });
+    }
+
+    const updated = await updateSystemSetting(key, String(value), description);
+    return res.json({
+      success: true,
+      data: updated,
+      message: 'تنظیمات با موفقیت ذخیره شد.',
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+
+
+// GET /api/settings/ai-response-policies
+export async function getAiResponsePoliciesController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const prisma = (await import('../db/client')).default;
+
+    const policies = await prisma.aiResponsePolicy.findMany({
+      orderBy: {
+        category: 'asc',
+      },
+    });
+
+    return res.json({
+      success: true,
+      data: policies,
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
+
+// PUT /api/settings/ai-response-policies/:id
+export async function updateAiResponsePolicyController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const prisma = (await import('../db/client')).default;
+
+    const { id } = req.params;
+
+    const {
+      mode,
+      priority,
+      fallbackMessage,
+      active,
+    } = req.body;
+
+
+    const updated = await prisma.aiResponsePolicy.update({
+      where: {
+        id,
+      },
+      data: {
+        ...(mode ? { mode } : {}),
+        ...(priority ? { priority } : {}),
+        ...(typeof fallbackMessage !== 'undefined'
+          ? { fallbackMessage }
+          : {}),
+        ...(typeof active !== 'undefined'
+          ? { active }
+          : {}),
+      },
+    });
+
+
+    return res.json({
+      success: true,
+      data: updated,
+      message: 'قانون پاسخگویی AI ذخیره شد.',
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+}

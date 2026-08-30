@@ -1,0 +1,6 @@
+○ ssh.service - OpenBSD Secure Shell server
+     Loaded: loaded (]8;;file://srv5295380290/usr/lib/systemd/system/ssh.service/usr/lib/systemd/system/ssh.service]8;;; [0;1;38;5;185mdisabled[0m; preset: [0;1;32menabled[0m)
+     Active: inactive (dead)
+TriggeredBy: [0;1;32m●[0m ssh.socket
+       Docs: ]8;;man:sshd(8)man:sshd(8)]8;;
+             ]8;;man:sshd_config(5)man:sshd_config(5)]8;;
